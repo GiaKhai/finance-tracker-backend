@@ -6,7 +6,7 @@ import authRoutes from "./routes/authRoutes.js";
 import walletRoutes from "./routes/walletRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
-import userRoutes from "./routes/userRoutes.js";
+import userRoutes from "./routes/userRouter.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 dotenv.config();
