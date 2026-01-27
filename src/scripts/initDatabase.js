@@ -11,9 +11,9 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS users (
         id INT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(255) NOT NULL,
+        role ENUM('user', 'admin') DEFAULT 'user',
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
-        role ENUM('user', 'admin') DEFAULT 'user',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
@@ -98,6 +98,23 @@ const createTables = async () => {
       console.log("✅ Default categories inserted");
     } else {
       console.log("ℹ️  Default categories already exist");
+    }
+
+
+    // Insert default users
+    const [existingUsers] = await connection.query(
+      "SELECT COUNT(*) as count FROM users WHERE user_id IS NULL"
+    );
+
+    if (existingUsers[0].count === 0) {
+      await connection.query(`
+        INSERT INTO users (user_id, name, email, password, role) VALUES
+        (NULL, 'System Admin', 'admin@gmail.com', '$2a$10$sdH.Kxjm2K7LmHqLZxn2wulfG0SPIg02CfoNE4GHGTuDbCFAakXVi', 'admin')
+        ON DUPLICATE KEY UPDATE role='admin'
+      `);
+      console.log("✅ Default users inserted");
+    } else {
+      console.log("ℹ️  Default users already exist");
     }
 
     console.log("\n✅ Database initialization completed successfully!");
