@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
+    "start": "node src/scripts/migrate.js && node src/server.js",
     "init-db": "node src/scripts/initDatabase.js",
-    "test-db": "node src/scripts/testConnection.js"
+    "test-db": "node src/scripts/testConnection.js",
+    "migrate": "node src/scripts/migrate.js"
   },
   "dependencies": {
     "express": "^4.18.2",
