@@ -3,29 +3,14 @@ import pool from "../config/database.js";
 
 export const getWallets = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Get total count
-    const [countResult] = await pool.query(
-      "SELECT COUNT(*) as total FROM wallets WHERE user_id = ?",
-      [req.userId]
-    );
-    const total = countResult[0].total;
-
+   
     const [wallets] = await pool.query(
-      "SELECT * FROM wallets WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-      [req.userId, parseInt(limit), offset]
+      "SELECT * FROM wallets WHERE user_id = ? ORDER BY created_at DESC ",
+      [req.userId]
     );
 
     res.json({
       wallets,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        totalPages: Math.ceil(total / parseInt(limit)),
-      },
     });
   } catch (error) {
     next(error);

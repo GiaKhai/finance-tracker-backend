@@ -2,6 +2,7 @@ import express from "express";
 import { body } from "express-validator";
 import {
   getTransactions,
+  getAllTransactions,
   getTransactionById,
   createTransaction,
   updateTransaction,
@@ -14,6 +15,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get("/", getTransactions);
+router.get("/all", getAllTransactions);
 router.get("/:id", getTransactionById);
 
 router.post(

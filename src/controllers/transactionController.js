@@ -10,7 +10,7 @@ export const getTransactions = async (req, res, next) => {
       start_date,
       end_date,
       page = 1,
-      limit = 10,
+      limit = 50,
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -26,6 +26,7 @@ export const getTransactions = async (req, res, next) => {
       LEFT JOIN wallets w ON t.wallet_id = w.id
       WHERE t.user_id = ?
     `;
+
     const params = [req.userId];
 
     if (wallet_id) {
@@ -92,7 +93,8 @@ export const getTransactions = async (req, res, next) => {
 
     query +=
       " ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT ? OFFSET ?";
-    params.push(parseInt(limit), offset);
+    params.push(parseInt(limit), offset);    
+
 
     const [transactions] = await pool.query(query, params);
 
@@ -104,6 +106,109 @@ export const getTransactions = async (req, res, next) => {
         total,
         totalPages: Math.ceil(total / parseInt(limit)),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllTransactions = async (req, res, next) => {
+  try {
+    const {
+      wallet_id,
+      category_id,
+      type,
+      start_date,
+      end_date,
+    } = req.query;
+
+    console.log(start_date);
+    console.log(end_date);
+    
+
+    let query = `
+      SELECT t.*, 
+             c.name as category_name, 
+             c.type as category_type, 
+             c.icon as category_icon,
+             w.name as wallet_name
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN wallets w ON t.wallet_id = w.id
+      WHERE t.user_id = ?
+    `;
+
+    const params = [req.userId];
+
+    if (wallet_id) {
+      query += " AND t.wallet_id = ?";
+      params.push(wallet_id);
+    }
+
+    if (category_id) {
+      query += " AND t.category_id = ?";
+      params.push(category_id);
+    }
+
+    if (type) {
+      query += " AND c.type = ?";
+      params.push(type.toUpperCase());
+    }
+
+    if (start_date) {
+      query += " AND t.transaction_date >= ?";
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      query += " AND t.transaction_date <= ?";
+      params.push(end_date);
+    }
+
+    // Get total count
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = ?
+    `;
+    const countParams = [req.userId];
+
+    if (wallet_id) {
+      countQuery += " AND t.wallet_id = ?";
+      countParams.push(wallet_id);
+    }
+
+    if (category_id) {
+      countQuery += " AND t.category_id = ?";
+      countParams.push(category_id);
+    }
+
+    if (type) {
+      countQuery += " AND c.type = ?";
+      countParams.push(type.toUpperCase());
+    }
+
+    if (start_date) {
+      countQuery += " AND t.transaction_date >= ?";
+      countParams.push(start_date);
+    }
+
+    if (end_date) {
+      countQuery += " AND t.transaction_date <= ?";
+      countParams.push(end_date);
+    }
+
+    const [countResult] = await pool.query(countQuery, countParams);
+    const total = countResult[0].total;
+
+    query +=
+      " ORDER BY t.transaction_date DESC, t.created_at DESC";    
+
+    const [transactions] = await pool.query(query, params);
+
+    res.json({
+      transactions,
     });
   } catch (error) {
     next(error);

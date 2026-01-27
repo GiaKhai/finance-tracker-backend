@@ -2,6 +2,7 @@ import express from "express";
 import { body } from "express-validator";
 import {
   getCategories,
+  getAllCategories,
   getCategoryById,
   createCategory,
   updateCategory,
@@ -14,6 +15,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get("/", getCategories);
+router.get("/all", getAllCategories);
 router.get("/:id", getCategoryById);
 
 router.post(

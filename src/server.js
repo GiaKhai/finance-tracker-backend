@@ -13,10 +13,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS Configuration - Allow all origins in development
+// CORS Configuration - Allow all origins
 app.use(
   cors({
-    origin: true, // Allow all origins in development
+    origin: true, // Allow all origins
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
@@ -27,10 +27,12 @@ app.use(
       "Origin",
     ],
     exposedHeaders: ["Content-Length", "X-Request-Id"],
-    maxAge: 86400,
+    maxAge: 86400, // 24 hours
     optionsSuccessStatus: 204,
   })
 );
+
+console.log("🔒 CORS: Allowing all origins");
 
 // Middleware
 app.use(express.json());

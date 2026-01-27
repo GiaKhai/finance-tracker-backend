@@ -51,6 +51,47 @@ export const getCategories = async (req, res, next) => {
   }
 };
 
+export const getAllCategories = async (req, res, next) => {
+  try {
+    const { type } = req.query;
+
+    let query = `
+      SELECT * FROM categories 
+      WHERE user_id IS NULL OR user_id = ?
+    `;
+    const params = [req.userId];
+
+    if (type) {
+      query += " AND type = ?";
+      params.push(type.toUpperCase());
+    }
+
+    let countQuery = `
+      SELECT COUNT(*) as total FROM categories 
+      WHERE user_id IS NULL OR user_id = ?
+    `;
+    const countParams = [req.userId];
+
+    if (type) {
+      countQuery += " AND type = ?";
+      countParams.push(type.toUpperCase());
+    }
+
+    const [countResult] = await pool.query(countQuery, countParams);
+    const total = countResult[0].total;
+
+    query += " ORDER BY type, name";
+
+    const [categories] = await pool.query(query, params);
+
+    res.json({
+      categories,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getCategoryById = async (req, res, next) => {
   try {
     const [categories] = await pool.query(
