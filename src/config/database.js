@@ -10,8 +10,11 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 5, // Reduce connection limit for Vercel serverless
   queueLimit: 0,
+  ssl: {
+    rejectUnauthorized: false, // Required for Aiven/Cloud DBs
+  },
 });
 
 console.log(process.env.DB_PORT);
