@@ -15,8 +15,8 @@ const app = express();
 // CORS Configuration - Allow all origins
 app.use(
   cors({
-    origin: true, // Allow all origins
-    credentials: true,
+    origin: "*", // Allow all origins explicitly for Vercel
+    credentials: false, // Must be false if origin is *
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
@@ -27,9 +27,11 @@ app.use(
     ],
     exposedHeaders: ["Content-Length", "X-Request-Id"],
     maxAge: 86400, // 24 hours
-    optionsSuccessStatus: 204,
+    optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
   })
 );
+
+app.options("*", cors()); // Enable pre-flight for all routes
 
 console.log("🔒 CORS: Allowing all origins");
 
