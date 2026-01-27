@@ -12,7 +12,6 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 5, // Reduce connection limit for Vercel serverless
   queueLimit: 0,
-  connectTimeout: 60000, // 60s timeout for stability on serverless
   ssl: {
     rejectUnauthorized: false, // Required for Aiven/Cloud DBs
   },
