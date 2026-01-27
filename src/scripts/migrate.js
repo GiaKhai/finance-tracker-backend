@@ -26,11 +26,30 @@ const migrate = async () => {
     const executedMigrations = new Set(executedRows.map((row) => row.name));
 
     // 3. Read migration files from src/migrations
-    const migrationsDir = path.join(__dirname, "../migrations");
+    // 3. Read migration files from src/migrations
+    // In Vercel serverless, __dirname might be anywhere. We need to find where 'migrations' folder ended up.
+    // Usually it's in the same relative structure if included in build.
+    let migrationsDir = path.join(__dirname, "../migrations");
+    
+    // Fallback: If not found, try to look relative to process.cwd()
     if (!fs.existsSync(migrationsDir)) {
-      console.log("📂 No migrations folder found. Skipping.");
+        console.log(`Directory not found at: ${migrationsDir}`);
+        migrationsDir = path.join(process.cwd(), "src/migrations");
+        console.log(`Trying alternative path: ${migrationsDir}`);
+    }
+
+    if (!fs.existsSync(migrationsDir)) {
+      // Last resort: maybe just 'migrations' in current PWD?
+      migrationsDir = path.join(process.cwd(), "migrations");
+      console.log(`Trying fallback path: ${migrationsDir}`);
+    }
+
+    if (!fs.existsSync(migrationsDir)) {
+      console.log("📂 No migrations folder found. Skipping migration process.");
       return;
     }
+    
+    console.log(`📂 Found migrations folder at: ${migrationsDir}`);
 
     const files = fs
       .readdirSync(migrationsDir)
