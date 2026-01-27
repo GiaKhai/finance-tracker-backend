@@ -26,7 +26,7 @@ export const register = async (req, res, next) => {
 
     // Create user
     const [result] = await pool.query(
-      "INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)",
+      "INSERT INTO users (email, password, name) VALUES (?, ?, ?)",
       [email, hashedPassword, name]
     );
 
@@ -65,7 +65,7 @@ export const login = async (req, res, next) => {
     }
 
     const user = users[0];
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
