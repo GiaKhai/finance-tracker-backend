@@ -41,7 +41,10 @@ export const createWallet = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, type = "CASH", balance = 0, currency = "VND" } = req.body;
+    let { name, type = "CASH", balance, currency = "VND" } = req.body;
+    
+    // Handle empty or missing balance
+    balance = (balance === undefined || balance === "" || balance === null) ? 0 : parseFloat(balance);
 
     const [result] = await pool.query(
       "INSERT INTO wallets (user_id, name, type, balance, currency) VALUES (?, ?, ?, ?, ?)",

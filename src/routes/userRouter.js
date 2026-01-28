@@ -6,6 +6,8 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  updateProfile,
+  updatePassword,
 } from "../controllers/userController.js";
 import { authenticate } from "../middleware/auth.js";
 
@@ -14,6 +16,8 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get("/", getUsers);
+router.put("/profile/update", updateProfile);
+router.put("/profile/change-password", updatePassword);
 router.get("/:id", getUserById);
 
 router.post(

@@ -20,7 +20,7 @@ router.post(
   "/",
   [
     body("name").notEmpty().withMessage("Wallet name is required"),
-    body("balance").optional().isNumeric(),
+    body("balance").optional({ checkFalsy: true }).isNumeric(),
     body("currency").optional().isString(),
   ],
   createWallet

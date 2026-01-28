@@ -5,24 +5,28 @@ import bcrypt from "bcryptjs";
 // Get all users (Admin only)
 export const getUsers = async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, search } = req.query;
+    const { page = 1, limit = 50, search, role } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let query = "SELECT id, name, email, role, created_at FROM users WHERE 1=1";
-    const params = [];
-
-    if (search) {
-      query += " AND (name LIKE ? OR email LIKE ?)";
-      params.push(`%${search}%`, `%${search}%`);
-    }
-
-    // Get total count
     let countQuery = "SELECT COUNT(*) as total FROM users WHERE 1=1";
+    const params = [];
     const countParams = [];
 
     if (search) {
-      countQuery += " AND (name LIKE ? OR email LIKE ?)";
+      const searchPart = " AND (name LIKE ? OR email LIKE ?)";
+      query += searchPart;
+      countQuery += searchPart;
+      params.push(`%${search}%`, `%${search}%`);
       countParams.push(`%${search}%`, `%${search}%`);
+    }
+
+    if (role) {
+      const rolePart = " AND role = ?";
+      query += rolePart;
+      countQuery += rolePart;
+      params.push(role);
+      countParams.push(role);
     }
 
     const [countResult] = await pool.query(countQuery, countParams);
@@ -161,6 +165,72 @@ export const deleteUser = async (req, res, next) => {
     await pool.query("DELETE FROM users WHERE id = ?", [req.params.id]);
 
     res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update profile (Current User)
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { name, email } = req.body;
+    const userId = req.userId;
+
+    // Check if email is already taken by another user
+    const [existing] = await pool.query(
+      "SELECT id FROM users WHERE email = ? AND id != ?",
+      [email, userId]
+    );
+    if (existing.length > 0) {
+      return res.status(400).json({ message: "Email already in use" });
+    }
+
+    await pool.query("UPDATE users SET name = ?, email = ? WHERE id = ?", [
+      name,
+      email,
+      userId,
+    ]);
+
+    const [updatedUser] = await pool.query(
+      "SELECT id, name, email, role, created_at FROM users WHERE id = ?",
+      [userId]
+    );
+
+    res.json({
+      message: "Profile updated successfully",
+      user: updatedUser[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Change password (Current User)
+export const updatePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.userId;
+
+    const [users] = await pool.query("SELECT password FROM users WHERE id = ?", [
+      userId,
+    ]);
+    const user = users[0];
+
+    const isValidPassword = await bcrypt.compare(
+      currentPassword,
+      user.password
+    );
+    if (!isValidPassword) {
+      return res.status(400).json({ message: "Mật khẩu hiện tại không đúng" });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE users SET password = ? WHERE id = ?", [
+      hashedNewPassword,
+      userId,
+    ]);
+
+    res.json({ message: "Password updated successfully" });
   } catch (error) {
     next(error);
   }
