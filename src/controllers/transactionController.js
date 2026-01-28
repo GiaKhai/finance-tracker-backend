@@ -31,11 +31,13 @@ export const getTransactions = async (req, res, next) => {
              c.type as category_type, 
              c.icon as category_icon,
              w.name as wallet_name,
+             tw.name as target_wallet_name,
              u.name as user_name,
              u.email as user_email
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN wallets w ON t.wallet_id = w.id
+      LEFT JOIN wallets tw ON t.target_wallet_id = tw.id
       LEFT JOIN users u ON t.user_id = u.id
       WHERE 1=1
     `;
@@ -257,47 +259,64 @@ export const createTransaction = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { wallet_id, amount, type, category, description, date } = req.body;
+    const { wallet_id, amount, type, category, description, date, target_wallet_id } = req.body;
 
     await connection.beginTransaction();
 
-    // Verify wallet belongs to user (Admin can create for others? Let's assume strict for now, or just self)
-    // For now, assume creation is for self even if admin.
-    const [wallets] = await connection.query(
-      "SELECT * FROM wallets WHERE id = ? AND user_id = ?",
-      [wallet_id, req.userId]
-    );
-
-    if (wallets.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({ message: "Wallet not found" });
-    }
-
-    // Determine category_id and transaction type
-    let category_id = null;
     let transactionType = type ? type.toUpperCase() : "EXPENSE";
+    let category_id = null;
 
-    // If category is provided as ID (number), use it
-    if (category && !isNaN(category)) {
-      category_id = parseInt(category);
+    // Validate logic based on Type
+    if (transactionType === 'TRANSFER') {
+        if (!target_wallet_id) {
+             throw new Error("Target wallet is required for transfer");
+        }
+        if (parseInt(wallet_id) === parseInt(target_wallet_id)) {
+            throw new Error("Cannot transfer to the same wallet");
+        }
 
-      // Verify category exists and get its type
-      const [categories] = await connection.query(
-        "SELECT type FROM categories WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
-        [category_id, req.userId]
-      );
+        // Check ownership of both wallets
+        const [wallets] = await connection.query(
+            "SELECT id FROM wallets WHERE id IN (?, ?) AND user_id = ?",
+            [wallet_id, target_wallet_id, req.userId]
+        );
+        if (wallets.length !== 2) {
+             throw new Error("One or both wallets not found or access denied");
+        }
 
-      if (categories.length > 0) {
-        transactionType = categories[0].type;
-      }
+    } else {
+        // Normal Income/Expense
+        const [wallets] = await connection.query(
+            "SELECT * FROM wallets WHERE id = ? AND user_id = ?",
+            [wallet_id, req.userId]
+        );
+    
+        if (wallets.length === 0) {
+          throw new Error("Wallet not found");
+        }
+
+        // Determine category_id and transaction type if category is provided
+        if (category && !isNaN(category)) {
+          category_id = parseInt(category);
+    
+          const [categories] = await connection.query(
+            "SELECT type FROM categories WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+            [category_id, req.userId]
+          );
+    
+          if (categories.length > 0) {
+            transactionType = categories[0].type;
+          }
+        }
     }
 
     // Insert transaction
     const [result] = await connection.query(
-      "INSERT INTO transactions (user_id, wallet_id, category_id, amount, type, note, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO transactions (user_id, wallet_id, target_wallet_id, category_id, amount, type, note, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [
         req.userId,
         wallet_id,
+        transactionType === 'TRANSFER' ? target_wallet_id : null,
         category_id,
         amount,
         transactionType,
@@ -306,22 +325,32 @@ export const createTransaction = async (req, res, next) => {
       ]
     );
 
-    // Update wallet balance
-    const multiplier = transactionType === "INCOME" ? 1 : -1;
-    await connection.query(
-      "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-      [amount * multiplier, wallet_id]
-    );
+    // Update Balances
+    if (transactionType === 'TRANSFER') {
+        // Deduct from source
+        await connection.query(
+            "UPDATE wallets SET balance = balance - ? WHERE id = ?",
+            [amount, wallet_id]
+        );
+        // Add to target
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [amount, target_wallet_id]
+        );
+    } else {
+        // Income or Expense
+        const multiplier = transactionType === "INCOME" ? 1 : -1;
+        await connection.query(
+          "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+          [amount * multiplier, wallet_id]
+        );
+    }
 
-    // Check balance is not negative
-    const [updatedWallet] = await connection.query(
-      "SELECT balance FROM wallets WHERE id = ?",
-      [wallet_id]
-    );
-
-    if (updatedWallet[0].balance < 0) {
-      await connection.rollback();
-      return res.status(400).json({ message: "Insufficient balance" });
+    // Check balances (optional: allow negative? requirement says ensure not negative usually, let's keep it safe)
+    // Checking source wallet
+    const [sourceWallet] = await connection.query("SELECT balance FROM wallets WHERE id = ?", [wallet_id]);
+    if (sourceWallet[0].balance < 0) {
+         throw new Error("Insufficient balance in source wallet");
     }
 
     await connection.commit();
@@ -332,10 +361,12 @@ export const createTransaction = async (req, res, next) => {
               c.type as category_type, 
               c.icon as category_icon,
               w.name as wallet_name,
+              tw.name as target_wallet_name,
               u.name as user_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN wallets w ON t.wallet_id = w.id
+       LEFT JOIN wallets tw ON t.target_wallet_id = tw.id
        LEFT JOIN users u ON t.user_id = u.id
        WHERE t.id = ?`,
       [result.insertId]
@@ -347,6 +378,12 @@ export const createTransaction = async (req, res, next) => {
     });
   } catch (error) {
     await connection.rollback();
+    // Handle manual errors
+    if (error.message === "Insufficient balance in source wallet" || 
+        error.message === "Cannot transfer to the same wallet" ||
+        error.message === "Target wallet is required for transfer") {
+        return res.status(400).json({ message: error.message });
+    }
     next(error);
   } finally {
     connection.release();
@@ -357,12 +394,12 @@ export const updateTransaction = async (req, res, next) => {
   const connection = await pool.getConnection();
 
   try {
-    const { amount, type, category, description, date } = req.body;
+    const { amount, type, category, description, date, target_wallet_id } = req.body;
     const isAdmin = await isUserAdmin(req);
 
     await connection.beginTransaction();
 
-    // Get old transaction with category type
+    // Get old transaction
     let query = `
        SELECT t.*, c.type as category_type
        FROM transactions t
@@ -371,7 +408,6 @@ export const updateTransaction = async (req, res, next) => {
     `;
     const params = [req.params.id];
     
-    // Only verify ownership if not admin
     if (!isAdmin) {
         query += " AND t.user_id = ?";
         params.push(req.userId);
@@ -385,53 +421,89 @@ export const updateTransaction = async (req, res, next) => {
     }
 
     const oldTransaction = oldTransactions[0];
+    const oldType = oldTransaction.type;
 
-    // Revert old balance
-    const oldMultiplier = oldTransaction.category_type === "INCOME" ? -1 : 1;
-    await connection.query(
-      "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-      [oldTransaction.amount * oldMultiplier, oldTransaction.wallet_id]
-    );
-
-    // Get new category type if category is being updated
-    let newCategoryType = oldTransaction.category_type;
-    if (category) {
-       // Check category access - if admin, can access all? simplified for now
-       let catQuery = "SELECT type FROM categories WHERE id = ?";
-       let catParams = [category];
-       if (!isAdmin) {
-          catQuery += " AND (user_id = ? OR user_id IS NULL)";
-          catParams.push(req.userId);
-       }
-
-      const [categories] = await connection.query(catQuery, catParams);
-      if (categories.length > 0) {
-        newCategoryType = categories[0].type;
-      }
+    // 1. Revert old balance changes
+    if (oldType === 'TRANSFER') {
+        // Revert source wallet: add back amount
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [oldTransaction.amount, oldTransaction.wallet_id]
+        );
+        // Revert target wallet: subtract amount
+        await connection.query(
+            "UPDATE wallets SET balance = balance - ? WHERE id = ?",
+            [oldTransaction.amount, oldTransaction.target_wallet_id]
+        );
+    } else {
+        const oldCatType = oldTransaction.category_type || oldTransaction.type;
+        const multiplier = oldCatType === "INCOME" ? -1 : 1;
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [oldTransaction.amount * multiplier, oldTransaction.wallet_id]
+        );
     }
 
-    // Update transaction
+    // 2. Determine new type and category
+    let newType = type ? type.toUpperCase() : oldType;
+    let newCategoryId = category || oldTransaction.category_id;
+    let newTargetWalletId = target_wallet_id || oldTransaction.target_wallet_id;
+
+    if (newType === 'TRANSFER') {
+        if (!newTargetWalletId) {
+            throw new Error("Target wallet is required for transfer");
+        }
+        if (parseInt(oldTransaction.wallet_id) === parseInt(newTargetWalletId)) {
+            throw new Error("Cannot transfer to the same wallet");
+        }
+        newCategoryId = null; // Transfers don't usually have categories
+    } else {
+        newTargetWalletId = null;
+    }
+
+    // 3. Update transaction record
     await connection.query(
-      "UPDATE transactions SET amount = ?, category_id = ?, note = ?, transaction_date = ? WHERE id = ?",
-      [amount, category, description, date, req.params.id]
+      "UPDATE transactions SET amount = ?, type = ?, category_id = ?, target_wallet_id = ?, note = ?, transaction_date = ? WHERE id = ?",
+      [amount, newType, newCategoryId, newTargetWalletId, description, date, req.params.id]
     );
 
-    // Apply new balance
-    const newMultiplier = newCategoryType === "INCOME" ? 1 : -1;
-    await connection.query(
-      "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-      [amount * newMultiplier, oldTransaction.wallet_id]
-    );
+    // 4. Apply new balance changes
+    if (newType === 'TRANSFER') {
+        // From source: subtract amount
+        await connection.query(
+            "UPDATE wallets SET balance = balance - ? WHERE id = ?",
+            [amount, oldTransaction.wallet_id]
+        );
+        // To target: add amount
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [amount, newTargetWalletId]
+        );
+    } else {
+        // Determine category type for balance multiplier
+        let effectType = newType;
+        if (newCategoryId) {
+            const [cats] = await connection.query("SELECT type FROM categories WHERE id = ?", [newCategoryId]);
+            if (cats.length > 0) effectType = cats[0].type;
+        }
+        
+        const multiplier = effectType === "INCOME" ? 1 : -1;
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [amount * multiplier, oldTransaction.wallet_id]
+        );
+    }
 
-    // Check balance
-    const [wallet] = await connection.query(
-      "SELECT balance FROM wallets WHERE id = ?",
-      [oldTransaction.wallet_id]
+    // 5. Check if any wallet balance went negative
+    const [wallets] = await connection.query(
+        "SELECT id, balance FROM wallets WHERE id IN (?, ?)",
+        [oldTransaction.wallet_id, newTargetWalletId || 0]
     );
-
-    if (wallet[0].balance < 0) {
-      await connection.rollback();
-      return res.status(400).json({ message: "Insufficient balance" });
+    
+    for (const w of wallets) {
+        if (w.balance < 0) {
+            throw new Error("Insufficient balance in one of the wallets");
+        }
     }
 
     await connection.commit();
@@ -442,10 +514,12 @@ export const updateTransaction = async (req, res, next) => {
               c.type as category_type, 
               c.icon as category_icon,
               w.name as wallet_name,
+              tw.name as target_wallet_name,
               u.name as user_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN wallets w ON t.wallet_id = w.id
+       LEFT JOIN wallets tw ON t.target_wallet_id = tw.id
        LEFT JOIN users u ON t.user_id = u.id
        WHERE t.id = ?`,
       [req.params.id]
@@ -457,6 +531,9 @@ export const updateTransaction = async (req, res, next) => {
     });
   } catch (error) {
     await connection.rollback();
+    if (["Insufficient balance in one of the wallets", "Cannot transfer to the same wallet", "Target wallet is required for transfer"].includes(error.message)) {
+        return res.status(400).json({ message: error.message });
+    }
     next(error);
   } finally {
     connection.release();
@@ -493,11 +570,25 @@ export const deleteTransaction = async (req, res, next) => {
     const transaction = transactions[0];
 
     // Revert balance
-    const multiplier = transaction.category_type === "INCOME" ? -1 : 1;
-    await connection.query(
-      "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-      [transaction.amount * multiplier, transaction.wallet_id]
-    );
+    if (transaction.type === 'TRANSFER') {
+        // Add back to source
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [transaction.amount, transaction.wallet_id]
+        );
+        // Subtract from target
+        await connection.query(
+            "UPDATE wallets SET balance = balance - ? WHERE id = ?",
+            [transaction.amount, transaction.target_wallet_id]
+        );
+    } else {
+        const catType = transaction.category_type || transaction.type;
+        const multiplier = catType === "INCOME" ? -1 : 1;
+        await connection.query(
+            "UPDATE wallets SET balance = balance + ? WHERE id = ?",
+            [transaction.amount * multiplier, transaction.wallet_id]
+        );
+    }
 
     // Delete transaction
     await connection.query("DELETE FROM transactions WHERE id = ?", [
