@@ -1,6 +1,14 @@
 import { validationResult } from "express-validator";
 import pool from "../config/database.js";
 
+// Helper to check admin role (fallback to DB if not in token)
+const isUserAdmin = async (req) => {
+  if (req.userRole === 'admin') return true;
+  // Fallback check DB
+  const [users] = await pool.query("SELECT role FROM users WHERE id = ?", [req.userId]);
+  return users[0]?.role === 'admin';
+};
+
 export const getTransactions = async (req, res, next) => {
   try {
     const {
@@ -11,8 +19,10 @@ export const getTransactions = async (req, res, next) => {
       end_date,
       page = 1,
       limit = 50,
+      user_id: filterUserId
     } = req.query;
 
+    const isAdmin = await isUserAdmin(req);
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let query = `
@@ -20,14 +30,27 @@ export const getTransactions = async (req, res, next) => {
              c.name as category_name, 
              c.type as category_type, 
              c.icon as category_icon,
-             w.name as wallet_name
+             w.name as wallet_name,
+             u.name as user_name,
+             u.email as user_email
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN wallets w ON t.wallet_id = w.id
-      WHERE t.user_id = ?
+      LEFT JOIN users u ON t.user_id = u.id
+      WHERE 1=1
     `;
 
-    const params = [req.userId];
+    const params = [];
+
+    // If not admin, restrict to own data
+    if (!isAdmin) {
+      query += " AND t.user_id = ?";
+      params.push(req.userId);
+    } else if (filterUserId) {
+       // Admin filtering by specific user
+       query += " AND t.user_id = ?";
+       params.push(filterUserId);
+    }
 
     if (wallet_id) {
       query += " AND t.wallet_id = ?";
@@ -59,9 +82,17 @@ export const getTransactions = async (req, res, next) => {
       SELECT COUNT(*) as total
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
-      WHERE t.user_id = ?
+      WHERE 1=1
     `;
-    const countParams = [req.userId];
+    const countParams = [];
+
+    if (!isAdmin) {
+        countQuery += " AND t.user_id = ?";
+        countParams.push(req.userId);
+    } else if (filterUserId) {
+        countQuery += " AND t.user_id = ?";
+        countParams.push(filterUserId);
+    }
 
     if (wallet_id) {
       countQuery += " AND t.wallet_id = ?";
@@ -93,8 +124,7 @@ export const getTransactions = async (req, res, next) => {
 
     query +=
       " ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT ? OFFSET ?";
-    params.push(parseInt(limit), offset);    
-
+    params.push(parseInt(limit), offset);
 
     const [transactions] = await pool.query(query, params);
 
@@ -122,23 +152,28 @@ export const getAllTransactions = async (req, res, next) => {
       end_date,
     } = req.query;
 
-    console.log(start_date);
-    console.log(end_date);
-    
+    const isAdmin = await isUserAdmin(req);
 
     let query = `
       SELECT t.*, 
              c.name as category_name, 
              c.type as category_type, 
              c.icon as category_icon,
-             w.name as wallet_name
+             w.name as wallet_name,
+             u.name as user_name
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN wallets w ON t.wallet_id = w.id
-      WHERE t.user_id = ?
+      LEFT JOIN users u ON t.user_id = u.id
+      WHERE 1=1
     `;
 
-    const params = [req.userId];
+    const params = [];
+
+    if (!isAdmin) {
+        query += " AND t.user_id = ?";
+        params.push(req.userId);
+    }
 
     if (wallet_id) {
       query += " AND t.wallet_id = ?";
@@ -164,46 +199,8 @@ export const getAllTransactions = async (req, res, next) => {
       query += " AND t.transaction_date <= ?";
       params.push(end_date);
     }
-
-    // Get total count
-    let countQuery = `
-      SELECT COUNT(*) as total
-      FROM transactions t
-      LEFT JOIN categories c ON t.category_id = c.id
-      WHERE t.user_id = ?
-    `;
-    const countParams = [req.userId];
-
-    if (wallet_id) {
-      countQuery += " AND t.wallet_id = ?";
-      countParams.push(wallet_id);
-    }
-
-    if (category_id) {
-      countQuery += " AND t.category_id = ?";
-      countParams.push(category_id);
-    }
-
-    if (type) {
-      countQuery += " AND c.type = ?";
-      countParams.push(type.toUpperCase());
-    }
-
-    if (start_date) {
-      countQuery += " AND t.transaction_date >= ?";
-      countParams.push(start_date);
-    }
-
-    if (end_date) {
-      countQuery += " AND t.transaction_date <= ?";
-      countParams.push(end_date);
-    }
-
-    const [countResult] = await pool.query(countQuery, countParams);
-    const total = countResult[0].total;
-
-    query +=
-      " ORDER BY t.transaction_date DESC, t.created_at DESC";    
+  
+    query += " ORDER BY t.transaction_date DESC, t.created_at DESC";    
 
     const [transactions] = await pool.query(query, params);
 
@@ -217,18 +214,29 @@ export const getAllTransactions = async (req, res, next) => {
 
 export const getTransactionById = async (req, res, next) => {
   try {
-    const [transactions] = await pool.query(
-      `SELECT t.*, 
-              c.name as category_name, 
-              c.type as category_type, 
-              c.icon as category_icon,
-              w.name as wallet_name
-       FROM transactions t
-       LEFT JOIN categories c ON t.category_id = c.id
-       LEFT JOIN wallets w ON t.wallet_id = w.id
-       WHERE t.id = ? AND t.user_id = ?`,
-      [req.params.id, req.userId]
-    );
+    const isAdmin = await isUserAdmin(req);
+    
+    let query = `
+        SELECT t.*, 
+               c.name as category_name, 
+               c.type as category_type, 
+               c.icon as category_icon,
+               w.name as wallet_name,
+               u.name as user_name
+        FROM transactions t
+        LEFT JOIN categories c ON t.category_id = c.id
+        LEFT JOIN wallets w ON t.wallet_id = w.id
+        LEFT JOIN users u ON t.user_id = u.id
+        WHERE t.id = ?
+    `;
+    const params = [req.params.id];
+
+    if (!isAdmin) {
+        query += " AND t.user_id = ?";
+        params.push(req.userId);
+    }
+
+    const [transactions] = await pool.query(query, params);
 
     if (transactions.length === 0) {
       return res.status(404).json({ message: "Transaction not found" });
@@ -253,7 +261,8 @@ export const createTransaction = async (req, res, next) => {
 
     await connection.beginTransaction();
 
-    // Verify wallet belongs to user
+    // Verify wallet belongs to user (Admin can create for others? Let's assume strict for now, or just self)
+    // For now, assume creation is for self even if admin.
     const [wallets] = await connection.query(
       "SELECT * FROM wallets WHERE id = ? AND user_id = ?",
       [wallet_id, req.userId]
@@ -322,10 +331,12 @@ export const createTransaction = async (req, res, next) => {
               c.name as category_name, 
               c.type as category_type, 
               c.icon as category_icon,
-              w.name as wallet_name
+              w.name as wallet_name,
+              u.name as user_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN wallets w ON t.wallet_id = w.id
+       LEFT JOIN users u ON t.user_id = u.id
        WHERE t.id = ?`,
       [result.insertId]
     );
@@ -347,17 +358,26 @@ export const updateTransaction = async (req, res, next) => {
 
   try {
     const { amount, type, category, description, date } = req.body;
+    const isAdmin = await isUserAdmin(req);
 
     await connection.beginTransaction();
 
     // Get old transaction with category type
-    const [oldTransactions] = await connection.query(
-      `SELECT t.*, c.type as category_type
+    let query = `
+       SELECT t.*, c.type as category_type
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.id = ? AND t.user_id = ?`,
-      [req.params.id, req.userId]
-    );
+       WHERE t.id = ?
+    `;
+    const params = [req.params.id];
+    
+    // Only verify ownership if not admin
+    if (!isAdmin) {
+        query += " AND t.user_id = ?";
+        params.push(req.userId);
+    }
+
+    const [oldTransactions] = await connection.query(query, params);
 
     if (oldTransactions.length === 0) {
       await connection.rollback();
@@ -376,10 +396,15 @@ export const updateTransaction = async (req, res, next) => {
     // Get new category type if category is being updated
     let newCategoryType = oldTransaction.category_type;
     if (category) {
-      const [categories] = await connection.query(
-        "SELECT type FROM categories WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
-        [category, req.userId]
-      );
+       // Check category access - if admin, can access all? simplified for now
+       let catQuery = "SELECT type FROM categories WHERE id = ?";
+       let catParams = [category];
+       if (!isAdmin) {
+          catQuery += " AND (user_id = ? OR user_id IS NULL)";
+          catParams.push(req.userId);
+       }
+
+      const [categories] = await connection.query(catQuery, catParams);
       if (categories.length > 0) {
         newCategoryType = categories[0].type;
       }
@@ -416,10 +441,12 @@ export const updateTransaction = async (req, res, next) => {
               c.name as category_name, 
               c.type as category_type, 
               c.icon as category_icon,
-              w.name as wallet_name
+              w.name as wallet_name,
+              u.name as user_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN wallets w ON t.wallet_id = w.id
+       LEFT JOIN users u ON t.user_id = u.id
        WHERE t.id = ?`,
       [req.params.id]
     );
@@ -440,15 +467,23 @@ export const deleteTransaction = async (req, res, next) => {
   const connection = await pool.getConnection();
 
   try {
+    const isAdmin = await isUserAdmin(req);
     await connection.beginTransaction();
 
-    const [transactions] = await connection.query(
-      `SELECT t.*, c.type as category_type
+    let query = `
+       SELECT t.*, c.type as category_type
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.id = ? AND t.user_id = ?`,
-      [req.params.id, req.userId]
-    );
+       WHERE t.id = ?
+    `;
+    const params = [req.params.id];
+    
+    if (!isAdmin) {
+        query += " AND t.user_id = ?";
+        params.push(req.userId);
+    }
+
+    const [transactions] = await connection.query(query, params);
 
     if (transactions.length === 0) {
       await connection.rollback();

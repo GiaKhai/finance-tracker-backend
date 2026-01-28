@@ -31,7 +31,7 @@ export const register = async (req, res, next) => {
     );
 
     const token = jwt.sign(
-      { userId: result.insertId },
+      { userId: result.insertId, role: "user" },
       process.env.JWT_SECRET,
       {
         expiresIn: process.env.JWT_EXPIRE,
@@ -41,8 +41,8 @@ export const register = async (req, res, next) => {
     res.status(201).json({
       message: "Registration successful",
       token,
-      user: { id: result.insertId, email, name },
-    });
+      user: { id: result.insertId, email, name, role: "user" },
+    });    
   } catch (error) {
     next(error);
   }
@@ -70,15 +70,15 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRE,
     });
 
     res.json({
       message: "Login successful",
       token,
-      user: { id: user.id, email: user.email, name: user.name },
-    });
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    });    
   } catch (error) {
     next(error);
   }

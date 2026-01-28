@@ -78,26 +78,6 @@ CREATE TABLE IF NOT EXISTS transactions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
--- SEED: Default Categories
--- =====================================================
-INSERT INTO categories (user_id, name, type, icon, color) VALUES
-(NULL, 'Salary', 'INCOME', 'payments', '#10B981'),
-(NULL, 'Business', 'INCOME', 'business_center', '#059669'),
-(NULL, 'Investment', 'INCOME', 'trending_up', '#34D399'),
-(NULL, 'Gift', 'INCOME', 'card_giftcard', '#6EE7B7'),
-(NULL, 'Other Income', 'INCOME', 'add_circle', '#A7F3D0'),
-(NULL, 'Food & Dining', 'EXPENSE', 'restaurant', '#EF4444'),
-(NULL, 'Shopping', 'EXPENSE', 'shopping_cart', '#DC2626'),
-(NULL, 'Transportation', 'EXPENSE', 'directions_car', '#F97316'),
-(NULL, 'Entertainment', 'EXPENSE', 'movie', '#F59E0B'),
-(NULL, 'Bills & Utilities', 'EXPENSE', 'receipt', '#EAB308'),
-(NULL, 'Healthcare', 'EXPENSE', 'local_hospital', '#EC4899'),
-(NULL, 'Education', 'EXPENSE', 'school', '#8B5CF6'),
-(NULL, 'Travel', 'EXPENSE', 'flight', '#3B82F6'),
-(NULL, 'Other Expense', 'EXPENSE', 'remove_circle', '#6B7280')
-ON DUPLICATE KEY UPDATE name=name;
-
--- =====================================================
 -- SEED: Default Admin User
 -- =====================================================
 INSERT INTO users (name, email, password, role) 
