@@ -44,7 +44,6 @@ const createTables = async () => {
         name VARCHAR(255) NOT NULL,
         type ENUM('INCOME', 'EXPENSE') NOT NULL,
         icon VARCHAR(50) DEFAULT 'category',
-        color VARCHAR(7) DEFAULT '#6B7280',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -79,7 +78,7 @@ const createTables = async () => {
 
     if (existingCategories[0].count === 0) {
       await connection.query(`
-        INSERT INTO categories (user_id, name, type, icon, color) VALUES
+        INSERT INTO categories (user_id, name, type, icon) VALUES
         (NULL, 'Salary', 'INCOME', 'payments', '#10B981'),
         (NULL, 'Business', 'INCOME', 'business_center', '#059669'),
         (NULL, 'Investment', 'INCOME', 'trending_up', '#34D399'),

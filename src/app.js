@@ -7,6 +7,7 @@ import walletRoutes from "./routes/walletRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import userRoutes from "./routes/userRouter.js";
+import budgetRoutes from "./routes/budgetRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 dotenv.config();
@@ -47,6 +48,7 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/budgets", budgetRoutes); // Added budgetRoutes
 
 // Health check
 app.get("/api/health", (req, res) => {
