@@ -71,6 +71,24 @@ const createTables = async () => {
     `);
     console.log("✅ Transactions table created");
 
+    // Create transaction_photos table (store images as base64 in DB)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS transaction_photos (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        transaction_id INT NULL,
+        photo_data LONGTEXT NOT NULL,
+        photo_mime VARCHAR(100) NOT NULL,
+        photo_date DATE NOT NULL,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
+      )
+    `);
+    console.log("✅ Transaction photos table created");
+
     // Insert default categories
     const [existingCategories] = await connection.query(
       "SELECT COUNT(*) as count FROM categories WHERE user_id IS NULL"
